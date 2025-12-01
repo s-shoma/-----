@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 from prophet import Prophet
 from prophet.plot import plot_plotly
 import plotly.graph_objects as go
-import feedparser # ニュース収集の最強ライブラリを追加
+import feedparser
+import urllib.parse # URLをきれいにするための道具を追加
 
 st.set_page_config(page_title="はまさんの神投資アプリ 🚀", layout="wide")
 st.title("God Mode: AI × ファンダメンタルズ × ニュース ⛩️")
@@ -13,8 +14,6 @@ st.title("God Mode: AI × ファンダメンタルズ × ニュース ⛩️")
 st.sidebar.header("設定")
 
 # --- 1. 銘柄辞書 ---
-# 名前からコードだけでなく、ニュース検索用の「検索ワード」も取得できるように工夫します
-# 形式: "表示名": ("コード", "ニュース検索ワード")
 stock_dict = {
     "トヨタ自動車 (7203)": ("7203.T", "トヨタ自動車"),
     "ソニーグループ (6758)": ("6758.T", "ソニーグループ"),
@@ -40,8 +39,8 @@ if selected_name == "★その他（手動入力）":
     ticker = st.sidebar.text_input("銘柄コード (例: 7203.T)", "7203.T")
     search_query = st.sidebar.text_input("ニュース検索ワード (例: トヨタ)", "トヨタ")
 else:
-    ticker = stock_dict[selected_name][0]       # コード (例: 7203.T)
-    search_query = stock_dict[selected_name][1] # 検索ワード (例: トヨタ自動車)
+    ticker = stock_dict[selected_name][0]
+    search_query = stock_dict[selected_name][1]
     st.sidebar.write(f"選択中: {ticker}")
 
 years = st.sidebar.slider("学習期間(年)", 1, 5, 2)
@@ -55,12 +54,13 @@ def calculate_rsi(data, window=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-# --- 関数: Googleニュースを取得する ---
+# --- 関数: Googleニュースを取得する（修正版） ---
 def get_news(query):
-    # GoogleニュースのRSS URL (日本語設定)
-    rss_url = f"https://news.google.com/rss/search?q={query}&hl=ja&gl=JP&ceid=JP:ja"
+    # 【ここを修正！】スペースなどをURLで使える文字に変換する（Tesla Inc -> Tesla%20Inc）
+    encoded_query = urllib.parse.quote(query)
+    rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ja&gl=JP&ceid=JP:ja"
     feed = feedparser.parse(rss_url)
-    return feed.entries[:5] # 最新5件を返す
+    return feed.entries[:5]
 
 if st.sidebar.button("神分析を実行 ⚡"):
     try:
@@ -88,7 +88,7 @@ if st.sidebar.button("神分析を実行 ⚡"):
                 current_price = df['Close'].iloc[-1]
 
                 # --- 2. ダッシュボード表示 ---
-                long_name = info.get('longName', search_query) # 名前が取れなければ検索ワードを表示
+                long_name = info.get('longName', search_query)
                 st.markdown(f"## 🏢 {long_name} の分析")
                 
                 pe_ratio = info.get('trailingPE', '-')
@@ -152,13 +152,12 @@ if st.sidebar.button("神分析を実行 ⚡"):
                     fig_ai.update_layout(height=500)
                     st.plotly_chart(fig_ai, use_container_width=True)
 
-                # --- 5. 最新ニュース（ここをGoogleニュースに変更！） ---
+                # --- 5. 最新ニュース ---
                 st.markdown(f"### 📰 「{search_query}」の最新ニュース")
                 news_entries = get_news(search_query)
                 
                 if news_entries:
                     for entry in news_entries:
-                        # ニュースの日付を取得
                         published = entry.published if 'published' in entry else "日付不明"
                         with st.expander(f"{entry.title} ({published})"):
                             st.write(f"情報源: {entry.source.title if 'source' in entry else 'Googleニュース'}")
