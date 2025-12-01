@@ -5,38 +5,43 @@ from datetime import datetime, timedelta
 from prophet import Prophet
 from prophet.plot import plot_plotly
 import plotly.graph_objects as go
+import feedparser # ニュース収集の最強ライブラリを追加
 
 st.set_page_config(page_title="はまさんの神投資アプリ 🚀", layout="wide")
-st.title("God Mode: AI × ファンダメンタルズ投資分析 ⛩️")
+st.title("God Mode: AI × ファンダメンタルズ × ニュース ⛩️")
 
 st.sidebar.header("設定")
 
 # --- 1. 銘柄辞書 ---
+# 名前からコードだけでなく、ニュース検索用の「検索ワード」も取得できるように工夫します
+# 形式: "表示名": ("コード", "ニュース検索ワード")
 stock_dict = {
-    "トヨタ自動車 (7203)": "7203.T",
-    "ソニーグループ (6758)": "6758.T",
-    "任天堂 (7974)": "7974.T",
-    "ソフトバンクG (9984)": "9984.T",
-    "三菱UFJ (8306)": "8306.T",
-    "東京エレクトロン (8035)": "8035.T",
-    "キーエンス (6861)": "6861.T",
-    "ファーストリテイリング (9983)": "9983.T",
-    "日立製作所 (6501)": "6501.T",
-    "Apple (AAPL)": "AAPL",
-    "NVIDIA (NVDA)": "NVDA",
-    "Microsoft (MSFT)": "MSFT",
-    "Google (GOOGL)": "GOOGL",
-    "Tesla (TSLA)": "TSLA",
-    "Amazon (AMZN)": "AMZN",
-    "★その他（手動入力）": "MANUAL"
+    "トヨタ自動車 (7203)": ("7203.T", "トヨタ自動車"),
+    "ソニーグループ (6758)": ("6758.T", "ソニーグループ"),
+    "任天堂 (7974)": ("7974.T", "任天堂"),
+    "ソフトバンクG (9984)": ("9984.T", "ソフトバンクグループ"),
+    "三菱UFJ (8306)": ("8306.T", "三菱UFJ"),
+    "東京エレクトロン (8035)": ("8035.T", "東京エレクトロン"),
+    "キーエンス (6861)": ("6861.T", "キーエンス"),
+    "ファーストリテイリング (9983)": ("9983.T", "ファーストリテイリング"),
+    "日立製作所 (6501)": ("6501.T", "日立製作所"),
+    "Apple (AAPL)": ("AAPL", "Apple Inc"),
+    "NVIDIA (NVDA)": ("NVDA", "NVIDIA"),
+    "Microsoft (MSFT)": ("MSFT", "Microsoft"),
+    "Google (GOOGL)": ("GOOGL", "Google Alphabet"),
+    "Tesla (TSLA)": ("TSLA", "Tesla Inc"),
+    "Amazon (AMZN)": ("AMZN", "Amazon.com"),
+    "★その他（手動入力）": ("MANUAL", "MANUAL")
 }
 
 selected_name = st.sidebar.selectbox("銘柄を選択してください", options=stock_dict.keys())
 
-if stock_dict[selected_name] == "MANUAL":
-    ticker = st.sidebar.text_input("銘柄コードを入力 (例: 7203.T)", "7203.T")
+if selected_name == "★その他（手動入力）":
+    ticker = st.sidebar.text_input("銘柄コード (例: 7203.T)", "7203.T")
+    search_query = st.sidebar.text_input("ニュース検索ワード (例: トヨタ)", "トヨタ")
 else:
-    ticker = stock_dict[selected_name]
+    ticker = stock_dict[selected_name][0]       # コード (例: 7203.T)
+    search_query = stock_dict[selected_name][1] # 検索ワード (例: トヨタ自動車)
     st.sidebar.write(f"選択中: {ticker}")
 
 years = st.sidebar.slider("学習期間(年)", 1, 5, 2)
@@ -50,14 +55,21 @@ def calculate_rsi(data, window=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
+# --- 関数: Googleニュースを取得する ---
+def get_news(query):
+    # GoogleニュースのRSS URL (日本語設定)
+    rss_url = f"https://news.google.com/rss/search?q={query}&hl=ja&gl=JP&ceid=JP:ja"
+    feed = feedparser.parse(rss_url)
+    return feed.entries[:5] # 最新5件を返す
+
 if st.sidebar.button("神分析を実行 ⚡"):
     try:
-        with st.spinner('あらゆるデータを収集中...'):
-            # --- 1. 企業情報の取得（ファンダメンタルズ） ---
+        with st.spinner('株価データと最新ニュースを集めています...'):
+            # --- 1. ファンダメンタルズ ---
             stock_info = yf.Ticker(ticker)
             info = stock_info.info
             
-            # データの取得（チャート用）
+            # データ取得
             start_date = datetime.now() - timedelta(days=years*365)
             end_date = datetime.now()
             df = yf.download(ticker, start=start_date, end=end_date)
@@ -68,31 +80,30 @@ if st.sidebar.button("神分析を実行 ⚡"):
             if len(df) == 0:
                 st.error("データなし")
             else:
-                # --- テクニカル計算 ---
+                # --- テクニカル指標 ---
                 df['RSI'] = calculate_rsi(df['Close'])
                 df['SMA25'] = df['Close'].rolling(window=25).mean()
                 df['SMA75'] = df['Close'].rolling(window=75).mean()
                 latest_rsi = df['RSI'].iloc[-1]
                 current_price = df['Close'].iloc[-1]
 
-                # --- 2. 神のダッシュボード（ファンダメンタルズ表示） ---
-                st.markdown(f"## 🏢 {info.get('longName', ticker)} の健康診断")
+                # --- 2. ダッシュボード表示 ---
+                long_name = info.get('longName', search_query) # 名前が取れなければ検索ワードを表示
+                st.markdown(f"## 🏢 {long_name} の分析")
                 
-                # 日本株などでデータが取れない場合の「-」表示対応
-                pe_ratio = info.get('trailingPE', '-')  # PER
-                pb_ratio = info.get('priceToBook', '-') # PBR
-                dividend = info.get('dividendYield', 0) # 配当利回り
-                if dividend is not None and dividend != '-':
+                pe_ratio = info.get('trailingPE', '-')
+                pb_ratio = info.get('priceToBook', '-')
+                dividend = info.get('dividendYield', 0)
+                if dividend is not None and dividend != '-' and isinstance(dividend, (int, float)):
                     dividend = f"{dividend * 100:.2f}%"
                 else:
                     dividend = "-"
 
-                # 4列カラムで重要指標を表示
                 col_f1, col_f2, col_f3, col_f4 = st.columns(4)
                 col_f1.metric("現在の株価", f"{float(current_price):.2f}")
-                col_f2.metric("PER (割安度)", pe_ratio, "15倍以下なら割安")
-                col_f3.metric("PBR (資産倍率)", pb_ratio, "1倍以下ならお買い得")
-                col_f4.metric("配当利回り", dividend, "銀行預金と比較しよう")
+                col_f2.metric("PER (割安度)", pe_ratio)
+                col_f3.metric("PBR (資産倍率)", pb_ratio)
+                col_f4.metric("配当利回り", dividend)
 
                 st.markdown("---")
 
@@ -141,19 +152,19 @@ if st.sidebar.button("神分析を実行 ⚡"):
                     fig_ai.update_layout(height=500)
                     st.plotly_chart(fig_ai, use_container_width=True)
 
-                # --- 5. 最新ニュース（ここが神！） ---
-                st.markdown("### 📰 関連する最新ニュース")
-                try:
-                    news_list = stock_info.news
-                    if news_list:
-                        for news in news_list[:5]: # 最新5件
-                            with st.expander(f"{news['title']} ({datetime.fromtimestamp(news['providerPublishTime']).strftime('%Y-%m-%d')})"):
-                                st.write(f"提供元: {news['publisher']}")
-                                st.markdown(f"[記事を読む]({news['link']})")
-                    else:
-                        st.write("関連ニュースが見つかりませんでした。")
-                except:
-                    st.write("ニュースの取得に失敗しました。")
+                # --- 5. 最新ニュース（ここをGoogleニュースに変更！） ---
+                st.markdown(f"### 📰 「{search_query}」の最新ニュース")
+                news_entries = get_news(search_query)
+                
+                if news_entries:
+                    for entry in news_entries:
+                        # ニュースの日付を取得
+                        published = entry.published if 'published' in entry else "日付不明"
+                        with st.expander(f"{entry.title} ({published})"):
+                            st.write(f"情報源: {entry.source.title if 'source' in entry else 'Googleニュース'}")
+                            st.markdown(f"[記事を読む]({entry.link})")
+                else:
+                    st.info("関連ニュースが見つかりませんでした。")
 
     except Exception as e:
-        st.error(f"エラー: {e}")
+        st.error(f"エラーが発生しました: {e}")
