@@ -6,8 +6,8 @@ from prophet import Prophet
 from prophet.plot import plot_plotly
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="はまさんの最強投資アプリ 🚀", layout="wide")
-st.title("AI × テクニカル分析 投資判定アプリ 💹")
+st.set_page_config(page_title="はまさんの神投資アプリ 🚀", layout="wide")
+st.title("God Mode: AI × ファンダメンタルズ投資分析 ⛩️")
 
 st.sidebar.header("設定")
 
@@ -21,6 +21,7 @@ stock_dict = {
     "東京エレクトロン (8035)": "8035.T",
     "キーエンス (6861)": "6861.T",
     "ファーストリテイリング (9983)": "9983.T",
+    "日立製作所 (6501)": "6501.T",
     "Apple (AAPL)": "AAPL",
     "NVIDIA (NVDA)": "NVDA",
     "Microsoft (MSFT)": "MSFT",
@@ -49,103 +50,110 @@ def calculate_rsi(data, window=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-if st.sidebar.button("分析・予測を実行"):
+if st.sidebar.button("神分析を実行 ⚡"):
     try:
-        with st.spinner('AIとテクニカル指標を計算中...'):
+        with st.spinner('あらゆるデータを収集中...'):
+            # --- 1. 企業情報の取得（ファンダメンタルズ） ---
+            stock_info = yf.Ticker(ticker)
+            info = stock_info.info
+            
+            # データの取得（チャート用）
             start_date = datetime.now() - timedelta(days=years*365)
             end_date = datetime.now()
             df = yf.download(ticker, start=start_date, end=end_date)
             
-            # 多重インデックス対策
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             
             if len(df) == 0:
                 st.error("データなし")
             else:
-                # --- テクニカル指標の計算 ---
+                # --- テクニカル計算 ---
                 df['RSI'] = calculate_rsi(df['Close'])
-                # 移動平均線（トレンドを見る線）
                 df['SMA25'] = df['Close'].rolling(window=25).mean()
                 df['SMA75'] = df['Close'].rolling(window=75).mean()
-                
                 latest_rsi = df['RSI'].iloc[-1]
+                current_price = df['Close'].iloc[-1]
+
+                # --- 2. 神のダッシュボード（ファンダメンタルズ表示） ---
+                st.markdown(f"## 🏢 {info.get('longName', ticker)} の健康診断")
                 
-                # --- 判定ロジック ---
+                # 日本株などでデータが取れない場合の「-」表示対応
+                pe_ratio = info.get('trailingPE', '-')  # PER
+                pb_ratio = info.get('priceToBook', '-') # PBR
+                dividend = info.get('dividendYield', 0) # 配当利回り
+                if dividend is not None and dividend != '-':
+                    dividend = f"{dividend * 100:.2f}%"
+                else:
+                    dividend = "-"
+
+                # 4列カラムで重要指標を表示
+                col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+                col_f1.metric("現在の株価", f"{float(current_price):.2f}")
+                col_f2.metric("PER (割安度)", pe_ratio, "15倍以下なら割安")
+                col_f3.metric("PBR (資産倍率)", pb_ratio, "1倍以下ならお買い得")
+                col_f4.metric("配当利回り", dividend, "銀行預金と比較しよう")
+
+                st.markdown("---")
+
+                # --- 3. 投資判断シグナル ---
+                st.subheader("🤖 AI & テクニカル判定")
+                col1, col2 = st.columns(2)
+                
                 signal = "様子見 🍵"
                 if latest_rsi >= 70:
                     signal = "売りシグナル（買われすぎ） 🔥"
+                    col1.error(f"RSI判定: {signal}")
                 elif latest_rsi <= 30:
                     signal = "買いシグナル（売られすぎ） 💎"
-
-                # --- 1. 結果サマリー ---
-                st.subheader(f"銘柄: {ticker} の分析結果")
-                col1, col2, col3 = st.columns(3)
-                current_price = df['Close'].iloc[-1]
-                
-                col1.metric("現在の株価", f"{float(current_price):.2f}")
-                col2.metric("RSI (過熱感)", f"{latest_rsi:.1f}", "70以上で売り/30以下で買い")
-                
-                if latest_rsi >= 70:
-                    col3.error(f"判定: {signal}")
-                elif latest_rsi <= 30:
-                    col3.success(f"判定: {signal}")
+                    col1.success(f"RSI判定: {signal}")
                 else:
-                    col3.info(f"判定: {signal}")
-
-                # --- 2. メインチャート（ローソク足）の描画 ---
-                st.markdown("### 📈 株価チャート（実績）")
+                    col1.info(f"RSI判定: {signal}")
                 
-                fig_candle = go.Figure()
+                col2.metric("現在のRSI", f"{latest_rsi:.1f}")
 
-                # ローソク足
-                fig_candle.add_trace(go.Candlestick(
-                    x=df.index,
-                    open=df['Open'], high=df['High'],
-                    low=df['Low'], close=df['Close'],
-                    name='株価'
-                ))
-
-                # 移動平均線（短期・長期）
-                fig_candle.add_trace(go.Scatter(x=df.index, y=df['SMA25'], mode='lines', name='25日移動平均', line=dict(color='orange', width=1)))
-                fig_candle.add_trace(go.Scatter(x=df.index, y=df['SMA75'], mode='lines', name='75日移動平均', line=dict(color='blue', width=1)))
-
-                fig_candle.update_layout(
-                    height=500,
-                    xaxis_rangeslider_visible=False, # 下のスライダーを消す
-                    title=f"{ticker} のローソク足チャート"
-                )
-                st.plotly_chart(fig_candle, use_container_width=True)
-
-                # --- 3. Prophet AI予測 ---
-                st.markdown("### 🤖 AIによる未来予測")
+                # --- 4. チャート表示 ---
+                tab1, tab2 = st.tabs(["📈 実績チャート", "🤖 未来予測チャート"])
                 
-                # Prophet用データ整形
-                data = df.reset_index()
-                date_col = 'Date' if 'Date' in data.columns else 'Datetime'
-                if date_col in data.columns:
-                    if pd.api.types.is_datetime64_any_dtype(data[date_col]):
-                        data[date_col] = data[date_col].dt.tz_localize(None)
+                with tab1:
+                    fig_candle = go.Figure()
+                    fig_candle.add_trace(go.Candlestick(
+                        x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='株価'
+                    ))
+                    fig_candle.add_trace(go.Scatter(x=df.index, y=df['SMA25'], mode='lines', name='25日線', line=dict(color='orange', width=1)))
+                    fig_candle.add_trace(go.Scatter(x=df.index, y=df['SMA75'], mode='lines', name='75日線', line=dict(color='blue', width=1)))
+                    fig_candle.update_layout(height=500, xaxis_rangeslider_visible=False)
+                    st.plotly_chart(fig_candle, use_container_width=True)
                 
-                df_prophet = data[[date_col, 'Close']].rename(columns={date_col: 'ds', 'Close': 'y'})
-                
-                m = Prophet()
-                m.fit(df_prophet)
-                future = m.make_future_dataframe(periods=days_predict)
-                forecast = m.predict(future)
-                
-                fig_ai = plot_plotly(m, forecast)
-                fig_ai.update_layout(height=500, title="青い線がAIの予測値です")
-                st.plotly_chart(fig_ai, use_container_width=True)
+                with tab2:
+                    data = df.reset_index()
+                    date_col = 'Date' if 'Date' in data.columns else 'Datetime'
+                    if date_col in data.columns:
+                        if pd.api.types.is_datetime64_any_dtype(data[date_col]):
+                            data[date_col] = data[date_col].dt.tz_localize(None)
+                    df_prophet = data[[date_col, 'Close']].rename(columns={date_col: 'ds', 'Close': 'y'})
+                    
+                    m = Prophet()
+                    m.fit(df_prophet)
+                    future = m.make_future_dataframe(periods=days_predict)
+                    forecast = m.predict(future)
+                    fig_ai = plot_plotly(m, forecast)
+                    fig_ai.update_layout(height=500)
+                    st.plotly_chart(fig_ai, use_container_width=True)
 
-                # --- 4. RSIグラフ ---
-                st.markdown("### 📊 RSI（過熱感）の推移")
-                fig_rsi = go.Figure()
-                fig_rsi.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='purple')))
-                fig_rsi.add_hline(y=70, line_dash="dash", line_color="red")
-                fig_rsi.add_hline(y=30, line_dash="dash", line_color="blue")
-                fig_rsi.update_layout(height=300, yaxis_range=[0, 100])
-                st.plotly_chart(fig_rsi, use_container_width=True)
+                # --- 5. 最新ニュース（ここが神！） ---
+                st.markdown("### 📰 関連する最新ニュース")
+                try:
+                    news_list = stock_info.news
+                    if news_list:
+                        for news in news_list[:5]: # 最新5件
+                            with st.expander(f"{news['title']} ({datetime.fromtimestamp(news['providerPublishTime']).strftime('%Y-%m-%d')})"):
+                                st.write(f"提供元: {news['publisher']}")
+                                st.markdown(f"[記事を読む]({news['link']})")
+                    else:
+                        st.write("関連ニュースが見つかりませんでした。")
+                except:
+                    st.write("ニュースの取得に失敗しました。")
 
     except Exception as e:
         st.error(f"エラー: {e}")
