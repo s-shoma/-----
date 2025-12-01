@@ -6,12 +6,12 @@ from prophet import Prophet
 from prophet.plot import plot_plotly
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="AI投資アドバイザー 🤖", layout="wide")
+st.set_page_config(page_title="はまさんの最強投資アプリ 🚀", layout="wide")
 st.title("AI × テクニカル分析 投資判定アプリ 💹")
 
 st.sidebar.header("設定")
 
-# --- 1. 銘柄辞書（ここを増やせばリストが増えます） ---
+# --- 1. 銘柄辞書 ---
 stock_dict = {
     "トヨタ自動車 (7203)": "7203.T",
     "ソニーグループ (6758)": "6758.T",
@@ -30,10 +30,8 @@ stock_dict = {
     "★その他（手動入力）": "MANUAL"
 }
 
-# セレクトボックスを表示
 selected_name = st.sidebar.selectbox("銘柄を選択してください", options=stock_dict.keys())
 
-# 選ばれたものが「MANUAL」なら手動入力欄を出す
 if stock_dict[selected_name] == "MANUAL":
     ticker = st.sidebar.text_input("銘柄コードを入力 (例: 7203.T)", "7203.T")
 else:
@@ -58,21 +56,29 @@ if st.sidebar.button("分析・予測を実行"):
             end_date = datetime.now()
             df = yf.download(ticker, start=start_date, end=end_date)
             
+            # 多重インデックス対策
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             
             if len(df) == 0:
                 st.error("データなし")
             else:
+                # --- テクニカル指標の計算 ---
                 df['RSI'] = calculate_rsi(df['Close'])
+                # 移動平均線（トレンドを見る線）
+                df['SMA25'] = df['Close'].rolling(window=25).mean()
+                df['SMA75'] = df['Close'].rolling(window=75).mean()
+                
                 latest_rsi = df['RSI'].iloc[-1]
                 
+                # --- 判定ロジック ---
                 signal = "様子見 🍵"
                 if latest_rsi >= 70:
                     signal = "売りシグナル（買われすぎ） 🔥"
                 elif latest_rsi <= 30:
                     signal = "買いシグナル（売られすぎ） 💎"
 
+                # --- 1. 結果サマリー ---
                 st.subheader(f"銘柄: {ticker} の分析結果")
                 col1, col2, col3 = st.columns(3)
                 current_price = df['Close'].iloc[-1]
@@ -87,7 +93,34 @@ if st.sidebar.button("分析・予測を実行"):
                 else:
                     col3.info(f"判定: {signal}")
 
-                st.markdown("### 🤖 AIによる未来予測チャート")
+                # --- 2. メインチャート（ローソク足）の描画 ---
+                st.markdown("### 📈 株価チャート（実績）")
+                
+                fig_candle = go.Figure()
+
+                # ローソク足
+                fig_candle.add_trace(go.Candlestick(
+                    x=df.index,
+                    open=df['Open'], high=df['High'],
+                    low=df['Low'], close=df['Close'],
+                    name='株価'
+                ))
+
+                # 移動平均線（短期・長期）
+                fig_candle.add_trace(go.Scatter(x=df.index, y=df['SMA25'], mode='lines', name='25日移動平均', line=dict(color='orange', width=1)))
+                fig_candle.add_trace(go.Scatter(x=df.index, y=df['SMA75'], mode='lines', name='75日移動平均', line=dict(color='blue', width=1)))
+
+                fig_candle.update_layout(
+                    height=500,
+                    xaxis_rangeslider_visible=False, # 下のスライダーを消す
+                    title=f"{ticker} のローソク足チャート"
+                )
+                st.plotly_chart(fig_candle, use_container_width=True)
+
+                # --- 3. Prophet AI予測 ---
+                st.markdown("### 🤖 AIによる未来予測")
+                
+                # Prophet用データ整形
                 data = df.reset_index()
                 date_col = 'Date' if 'Date' in data.columns else 'Datetime'
                 if date_col in data.columns:
@@ -101,10 +134,11 @@ if st.sidebar.button("分析・予測を実行"):
                 future = m.make_future_dataframe(periods=days_predict)
                 forecast = m.predict(future)
                 
-                fig = plot_plotly(m, forecast)
-                fig.update_layout(height=500)
-                st.plotly_chart(fig, use_container_width=True)
+                fig_ai = plot_plotly(m, forecast)
+                fig_ai.update_layout(height=500, title="青い線がAIの予測値です")
+                st.plotly_chart(fig_ai, use_container_width=True)
 
+                # --- 4. RSIグラフ ---
                 st.markdown("### 📊 RSI（過熱感）の推移")
                 fig_rsi = go.Figure()
                 fig_rsi.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='purple')))
