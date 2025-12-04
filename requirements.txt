@@ -6,3 +6,5 @@ lxml
 yfinance
 prophet
 plotly
+xlrd
+openpyxl
