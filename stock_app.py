@@ -8,8 +8,8 @@ import plotly.graph_objects as go
 import feedparser
 import urllib.parse
 
-st.set_page_config(page_title="はまさんの神投資アプリ 🚀", layout="wide")
-st.title("God Mode: 全銘柄対応 & 決算分析版 ⛩️")
+st.set_page_config(page_title="はまの投資アプリ 🚀", layout="wide")
+st.title(" 全銘柄対応 & CSV出力版 ⛩️")
 
 # --- サイドバー設定 ---
 st.sidebar.header("🛠 設定")
@@ -65,6 +65,10 @@ def get_news(query):
     feed = feedparser.parse(rss_url)
     return feed.entries[:5]
 
+# --- CSV変換関数 (文字化け防止のためBOM付きUTF-8にする) ---
+def convert_df_to_csv(df):
+    return df.to_csv().encode('utf-8-sig')
+
 # ==========================================
 # 🅰️ 詳細分析モード
 # ==========================================
@@ -85,16 +89,14 @@ if app_mode == "詳細分析 (単一銘柄)":
 
         if st.sidebar.button("神分析を実行 ⚡"):
             try:
-                with st.spinner(f'【{search_query}】の財務データ等を分析中...'):
+                with st.spinner(f'【{search_query}】のデータを分析中...'):
                     stock_info = yf.Ticker(ticker)
                     info = stock_info.info
-                    
-                    # 決算データの取得（ここが新機能！）
                     financials = stock_info.financials
                     
-                    # 株価データの取得
                     start_date = datetime.now() - timedelta(days=years*365)
                     end_date = datetime.now()
+                    
                     df = yf.download(ticker, start=start_date, end=end_date, interval=interval)
                     
                     if isinstance(df.columns, pd.MultiIndex):
@@ -123,12 +125,20 @@ if app_mode == "詳細分析 (単一銘柄)":
                         c2.metric("PER", pe)
                         c3.metric("PBR", pb)
                         c4.metric("配当利回り", div)
+                        
+                        # --- 【新機能】CSVダウンロードボタン ---
+                        csv_data = convert_df_to_csv(df)
+                        st.download_button(
+                            label="📥 株価データをCSVでダウンロード",
+                            data=csv_data,
+                            file_name=f"{ticker}_stock_data.csv",
+                            mime='text/csv',
+                        )
                         st.markdown("---")
 
-                        # チャートタブ（決算タブを追加！）
+                        # チャートタブ
                         tab1, tab2, tab3 = st.tabs(["📈 実績チャート", "💰 決算推移", "🤖 AI予測"])
                         
-                        # 1. 実績チャート
                         with tab1:
                             fig = go.Figure()
                             fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='株価'))
@@ -137,8 +147,7 @@ if app_mode == "詳細分析 (単一銘柄)":
                             fig.update_layout(height=500, title=f"{selected_interval_label}チャート")
                             st.plotly_chart(fig, use_container_width=True)
                         
-                        # 2. 決算推移（新機能）
-                        with tab3: # タブの順番変えました（AIを3番目に）
+                        with tab3:
                             data = df.reset_index()
                             date_col = 'Date' if 'Date' in data.columns else 'Datetime'
                             if date_col in data.columns:
@@ -152,55 +161,23 @@ if app_mode == "詳細分析 (単一銘柄)":
                             fig_ai = plot_plotly(m, forecast)
                             st.plotly_chart(fig_ai, use_container_width=True)
 
-                        # 3. 決算グラフ描画
                         with tab2:
                             if financials is not None and not financials.empty:
                                 try:
-                                    # データ整理（日付が列になっているので転置する）
-                                    fin_df = financials.T
-                                    # 日付の古い順に並び替え
-                                    fin_df = fin_df.sort_index()
-                                    
-                                    # 必要な項目（売上と純利益）があるか確認して抽出
-                                    # yfinanceの項目名は英語（Total Revenue, Net Income）
-                                    target_cols = ['Total Revenue', 'Net Income']
-                                    
-                                    # グラフ作成
+                                    fin_df = financials.T.sort_index()
                                     fig_fin = go.Figure()
-                                    
-                                    # 売上高（棒グラフ）
                                     if 'Total Revenue' in fin_df.columns:
-                                        fig_fin.add_trace(go.Bar(
-                                            x=fin_df.index, 
-                                            y=fin_df['Total Revenue'], 
-                                            name='売上高', 
-                                            marker_color='lightblue'
-                                        ))
-                                    
-                                    # 純利益（棒グラフ）
+                                        fig_fin.add_trace(go.Bar(x=fin_df.index, y=fin_df['Total Revenue'], name='売上高', marker_color='lightblue'))
                                     if 'Net Income' in fin_df.columns:
-                                        fig_fin.add_trace(go.Bar(
-                                            x=fin_df.index, 
-                                            y=fin_df['Net Income'], 
-                                            name='純利益', 
-                                            marker_color='orange'
-                                        ))
+                                        fig_fin.add_trace(go.Bar(x=fin_df.index, y=fin_df['Net Income'], name='純利益', marker_color='orange'))
 
-                                    fig_fin.update_layout(
-                                        title="過去の業績推移 (売上高 & 純利益)",
-                                        yaxis_title="金額",
-                                        barmode='group', # 並べて表示
-                                        height=500
-                                    )
+                                    fig_fin.update_layout(title="業績推移", yaxis_title="金額", barmode='group', height=500)
                                     st.plotly_chart(fig_fin, use_container_width=True)
-                                    st.caption("※データがない年は表示されません。金額の単位に注意してください（兆・億など）。")
                                 except Exception as e:
                                     st.warning(f"グラフ作成エラー: {e}")
-                                    st.write(financials) # 生データを表示しておく
                             else:
-                                st.info("決算データが取得できませんでした（ETFや指数などの可能性があります）。")
+                                st.info("決算データなし")
 
-                        # ニュース
                         st.markdown(f"### 📰 ニュース")
                         news = get_news(search_query)
                         if news:
@@ -224,7 +201,7 @@ else:
         st.error("リスト読み込みエラー")
     else:
         stock_labels = [s["label"] for s in stocks]
-        selected_labels = st.multiselect("比較したい銘柄を選んでください（2つ以上推奨）", options=stock_labels, default=stock_labels[:3])
+        selected_labels = st.multiselect("比較したい銘柄を選んでください", options=stock_labels, default=stock_labels[:3])
         
         compare_years = st.sidebar.slider("比較期間(年)", 1, 10, 1)
 
@@ -264,8 +241,18 @@ else:
                         st.plotly_chart(fig_comp, use_container_width=True)
 
                         if len(combined_df.columns) > 1:
+                            # --- 【新機能】比較データのCSVダウンロード ---
+                            st.markdown("### 📥 データ出力")
+                            csv_comp = convert_df_to_csv(combined_df)
+                            st.download_button(
+                                label="比較データ(株価一覧)をダウンロード",
+                                data=csv_comp,
+                                file_name="stock_comparison.csv",
+                                mime='text/csv',
+                            )
+                            # ----------------------------------------
+
                             st.markdown("### 🧩 株価の連動性（相関ヒートマップ）")
-                            st.caption("🟥 赤 = 同じ動き / 🟦 青 = 逆の動き")
                             corr_matrix = combined_df.corr()
                             fig_heat = go.Figure(data=go.Heatmap(
                                 z=corr_matrix.values, x=corr_matrix.columns, y=corr_matrix.index,
