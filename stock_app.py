@@ -5,24 +5,23 @@ from datetime import datetime, timedelta
 from prophet import Prophet
 from prophet.plot import plot_plotly
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots # グラフを重ねるための道具
 import feedparser
 import urllib.parse
 
-st.set_page_config(page_title="はまの投資アプリ 🚀", layout="wide")
-st.title(" 全銘柄対応 & CSV出力版 ⛩️")
+st.set_page_config(page_title="はまさんの神投資アプリ 🚀", layout="wide")
+st.title("God Mode: 視覚強化版 (Visual Pro) ⛩️")
 
 # --- サイドバー設定 ---
 st.sidebar.header("🛠 設定")
 
-# 1. モード選択
 app_mode = st.sidebar.radio("モード選択", ["詳細分析 (単一銘柄)", "パフォーマンス比較 (複数銘柄)"])
 
-# 2. 足の種類
 interval_map = {"日足 (1日)": "1d", "週足 (1週間)": "1wk", "月足 (1ヶ月)": "1mo"}
 selected_interval_label = st.sidebar.selectbox("チャートの足", options=interval_map.keys())
 interval = interval_map[selected_interval_label]
 
-# --- 関数: Excelリスト読み込み ---
+# --- Excelリスト読み込み ---
 @st.cache_data
 def get_stock_list():
     try:
@@ -65,7 +64,6 @@ def get_news(query):
     feed = feedparser.parse(rss_url)
     return feed.entries[:5]
 
-# --- CSV変換関数 (文字化け防止のためBOM付きUTF-8にする) ---
 def convert_df_to_csv(df):
     return df.to_csv().encode('utf-8-sig')
 
@@ -77,7 +75,6 @@ if app_mode == "詳細分析 (単一銘柄)":
     if not stocks:
         st.error("銘柄リスト読み込みエラー")
     else:
-        # 銘柄選択
         stock_labels = [s["label"] for s in stocks]
         selected_label = st.sidebar.selectbox("銘柄を検索・選択", options=stock_labels)
         selected_data = next(s for s in stocks if s["label"] == selected_label)
@@ -89,7 +86,7 @@ if app_mode == "詳細分析 (単一銘柄)":
 
         if st.sidebar.button("神分析を実行 ⚡"):
             try:
-                with st.spinner(f'【{search_query}】のデータを分析中...'):
+                with st.spinner(f'【{search_query}】を詳細分析中...'):
                     stock_info = yf.Ticker(ticker)
                     info = stock_info.info
                     financials = stock_info.financials
@@ -111,7 +108,6 @@ if app_mode == "詳細分析 (単一銘柄)":
                         latest_rsi = df['RSI'].iloc[-1]
                         current_price = df['Close'].iloc[-1]
 
-                        # ダッシュボード
                         long_name = info.get('longName', search_query)
                         st.markdown(f"## 🏢 {long_name}")
                         
@@ -126,27 +122,55 @@ if app_mode == "詳細分析 (単一銘柄)":
                         c3.metric("PBR", pb)
                         c4.metric("配当利回り", div)
                         
-                        # --- 【新機能】CSVダウンロードボタン ---
                         csv_data = convert_df_to_csv(df)
-                        st.download_button(
-                            label="📥 株価データをCSVでダウンロード",
-                            data=csv_data,
-                            file_name=f"{ticker}_stock_data.csv",
-                            mime='text/csv',
-                        )
+                        st.download_button(label="📥 株価データをCSVでダウンロード", data=csv_data, file_name=f"{ticker}_data.csv", mime='text/csv')
                         st.markdown("---")
 
                         # チャートタブ
-                        tab1, tab2, tab3 = st.tabs(["📈 実績チャート", "💰 決算推移", "🤖 AI予測"])
+                        tab1, tab2, tab3 = st.tabs(["📈 実績チャート(Pro)", "💰 決算推移", "🤖 AI予測(Pro)"])
                         
+                        # --- 1. 実績チャート (Visual Upgrade) ---
                         with tab1:
-                            fig = go.Figure()
-                            fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='株価'))
-                            fig.add_trace(go.Scatter(x=df.index, y=df['SMA25'], mode='lines', name='25MA', line=dict(color='orange')))
-                            fig.add_trace(go.Scatter(x=df.index, y=df['SMA75'], mode='lines', name='75MA', line=dict(color='blue')))
-                            fig.update_layout(height=500, title=f"{selected_interval_label}チャート")
+                            # 2段組みのグラフを作る（上が株価、下が出来高）
+                            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
+                                                vertical_spacing=0.03, row_heights=[0.7, 0.3])
+
+                            # ローソク足
+                            fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='株価'), row=1, col=1)
+                            # 移動平均線
+                            fig.add_trace(go.Scatter(x=df.index, y=df['SMA25'], mode='lines', name='25MA', line=dict(color='#FFA500', width=1.5)), row=1, col=1)
+                            fig.add_trace(go.Scatter(x=df.index, y=df['SMA75'], mode='lines', name='75MA', line=dict(color='#00BFFF', width=1.5)), row=1, col=1)
+                            
+                            # 出来高（棒グラフ）
+                            fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='出来高', marker_color='rgba(200, 200, 200, 0.5)'), row=2, col=1)
+
+                            # デザイン調整（ダークモード風）
+                            fig.update_layout(
+                                title=f"{selected_interval_label}チャート (出来高付き)",
+                                height=600,
+                                template="plotly_dark", # ★ここが魔法の言葉！黒背景になります
+                                xaxis_rangeslider_visible=False,
+                                showlegend=True,
+                                margin=dict(l=20, r=20, t=50, b=20)
+                            )
                             st.plotly_chart(fig, use_container_width=True)
                         
+                        # --- 2. 決算グラフ ---
+                        with tab2:
+                            if financials is not None and not financials.empty:
+                                fin_df = financials.T.sort_index()
+                                fig_fin = go.Figure()
+                                if 'Total Revenue' in fin_df.columns:
+                                    fig_fin.add_trace(go.Bar(x=fin_df.index, y=fin_df['Total Revenue'], name='売上高', marker_color='#00CC96'))
+                                if 'Net Income' in fin_df.columns:
+                                    fig_fin.add_trace(go.Bar(x=fin_df.index, y=fin_df['Net Income'], name='純利益', marker_color='#EF553B'))
+
+                                fig_fin.update_layout(title="業績推移", barmode='group', height=500, template="plotly_dark")
+                                st.plotly_chart(fig_fin, use_container_width=True)
+                            else:
+                                st.info("決算データなし")
+
+                        # --- 3. AI予測 (Visual Upgrade) ---
                         with tab3:
                             data = df.reset_index()
                             date_col = 'Date' if 'Date' in data.columns else 'Datetime'
@@ -158,25 +182,28 @@ if app_mode == "詳細分析 (単一銘柄)":
                             m.fit(df_p)
                             future = m.make_future_dataframe(periods=days_predict)
                             forecast = m.predict(future)
+                            
+                            # Prophetの図もPlotlyでカスタマイズ
                             fig_ai = plot_plotly(m, forecast)
+                            fig_ai.update_layout(
+                                title="AI予測信頼区間 (黒背景版)",
+                                height=600,
+                                template="plotly_dark", # 黒背景
+                                xaxis_title="日付", yaxis_title="株価"
+                            )
                             st.plotly_chart(fig_ai, use_container_width=True)
 
-                        with tab2:
-                            if financials is not None and not financials.empty:
-                                try:
-                                    fin_df = financials.T.sort_index()
-                                    fig_fin = go.Figure()
-                                    if 'Total Revenue' in fin_df.columns:
-                                        fig_fin.add_trace(go.Bar(x=fin_df.index, y=fin_df['Total Revenue'], name='売上高', marker_color='lightblue'))
-                                    if 'Net Income' in fin_df.columns:
-                                        fig_fin.add_trace(go.Bar(x=fin_df.index, y=fin_df['Net Income'], name='純利益', marker_color='orange'))
-
-                                    fig_fin.update_layout(title="業績推移", yaxis_title="金額", barmode='group', height=500)
-                                    st.plotly_chart(fig_fin, use_container_width=True)
-                                except Exception as e:
-                                    st.warning(f"グラフ作成エラー: {e}")
-                            else:
-                                st.info("決算データなし")
+                        # --- 4. RSI (Visual Upgrade: 色帯付き) ---
+                        st.markdown("### 📊 RSI（過熱感）")
+                        fig_rsi = go.Figure()
+                        fig_rsi.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='#AB63FA', width=2)))
+                        
+                        # 帯（ゾーン）をつける
+                        fig_rsi.add_hrect(y0=70, y1=100, fillcolor="red", opacity=0.2, line_width=0, annotation_text="売りゾーン", annotation_position="top left")
+                        fig_rsi.add_hrect(y0=0, y1=30, fillcolor="blue", opacity=0.2, line_width=0, annotation_text="買いゾーン", annotation_position="bottom left")
+                        
+                        fig_rsi.update_layout(height=300, yaxis_range=[0, 100], template="plotly_dark", title="RSI推移 (70以上=赤 / 30以下=青)")
+                        st.plotly_chart(fig_rsi, use_container_width=True)
 
                         st.markdown(f"### 📰 ニュース")
                         news = get_news(search_query)
@@ -195,25 +222,21 @@ if app_mode == "詳細分析 (単一銘柄)":
 # ==========================================
 else:
     st.header("⚖️ 銘柄パフォーマンス比較")
-    st.info("複数の銘柄を選んで、成長率と相関（似ている度）を分析します。")
-
     if not stocks:
         st.error("リスト読み込みエラー")
     else:
         stock_labels = [s["label"] for s in stocks]
         selected_labels = st.multiselect("比較したい銘柄を選んでください", options=stock_labels, default=stock_labels[:3])
-        
         compare_years = st.sidebar.slider("比較期間(年)", 1, 10, 1)
 
         if st.button("比較スタート 🏁"):
             if not selected_labels:
-                st.warning("銘柄を少なくとも1つ選んでください")
+                st.warning("銘柄を選択してください")
             else:
                 try:
                     with st.spinner('データ収集中...'):
                         start_date = datetime.now() - timedelta(days=compare_years*365)
                         end_date = datetime.now()
-                        
                         fig_comp = go.Figure()
                         combined_df = pd.DataFrame()
                         
@@ -221,11 +244,9 @@ else:
                             target = next(s for s in stocks if s["label"] == label)
                             code = target["code"]
                             name = target["query"]
-                            
                             df = yf.download(code, start=start_date, end=end_date, interval=interval)
                             if isinstance(df.columns, pd.MultiIndex):
                                 df.columns = df.columns.get_level_values(0)
-                            
                             if len(df) > 0:
                                 initial_price = df['Close'].iloc[0]
                                 df['Return'] = ((df['Close'] / initial_price) - 1) * 100
@@ -233,36 +254,28 @@ else:
                                 combined_df[name] = df['Close']
 
                         fig_comp.update_layout(
-                            title=f"過去{compare_years}年間の成長率比較 (%)",
-                            xaxis_title="日付", yaxis_title="リターン (%)",
-                            height=500, hovermode="x unified"
+                            title=f"成長率比較 (%) - Dark Mode",
+                            height=600, hovermode="x unified",
+                            template="plotly_dark" # ここも黒背景
                         )
                         fig_comp.add_hline(y=0, line_dash="dash", line_color="gray")
                         st.plotly_chart(fig_comp, use_container_width=True)
 
                         if len(combined_df.columns) > 1:
-                            # --- 【新機能】比較データのCSVダウンロード ---
-                            st.markdown("### 📥 データ出力")
                             csv_comp = convert_df_to_csv(combined_df)
-                            st.download_button(
-                                label="比較データ(株価一覧)をダウンロード",
-                                data=csv_comp,
-                                file_name="stock_comparison.csv",
-                                mime='text/csv',
-                            )
-                            # ----------------------------------------
+                            st.download_button(label="データをダウンロード", data=csv_comp, file_name="comparison.csv", mime='text/csv')
 
-                            st.markdown("### 🧩 株価の連動性（相関ヒートマップ）")
+                            st.markdown("### 🧩 相関ヒートマップ")
                             corr_matrix = combined_df.corr()
                             fig_heat = go.Figure(data=go.Heatmap(
                                 z=corr_matrix.values, x=corr_matrix.columns, y=corr_matrix.index,
                                 colorscale='RdBu_r', zmin=-1, zmax=1,
                                 text=corr_matrix.values, texttemplate="%{text:.2f}"
                             ))
-                            fig_heat.update_layout(height=600, title="相関マトリクス")
+                            fig_heat.update_layout(height=600, template="plotly_dark")
                             st.plotly_chart(fig_heat, use_container_width=True)
                         else:
-                            st.info("※ヒートマップを見るには、2つ以上の銘柄を選んでください。")
+                            st.info("※2つ以上選んでください")
 
                 except Exception as e:
                     st.error(f"比較エラー: {e}")
