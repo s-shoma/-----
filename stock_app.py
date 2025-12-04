@@ -14,10 +14,10 @@ st.title("God Mode: 全銘柄対応 & 比較分析版 ⛩️")
 # --- サイドバー設定 ---
 st.sidebar.header("🛠 設定")
 
-# 1. モード選択（ここで機能を切り替える！）
+# 1. モード選択
 app_mode = st.sidebar.radio("モード選択", ["詳細分析 (単一銘柄)", "パフォーマンス比較 (複数銘柄)"])
 
-# 2. 足の種類（日足・週足・月足）
+# 2. 足の種類
 interval_map = {"日足 (1日)": "1d", "週足 (1週間)": "1wk", "月足 (1ヶ月)": "1mo"}
 selected_interval_label = st.sidebar.selectbox("チャートの足", options=interval_map.keys())
 interval = interval_map[selected_interval_label]
@@ -66,7 +66,7 @@ def get_news(query):
     return feed.entries[:5]
 
 # ==========================================
-# 🅰️ 詳細分析モード (今までの機能 + 足選択)
+# 🅰️ 詳細分析モード
 # ==========================================
 if app_mode == "詳細分析 (単一銘柄)":
     
@@ -92,7 +92,6 @@ if app_mode == "詳細分析 (単一銘柄)":
                     start_date = datetime.now() - timedelta(days=years*365)
                     end_date = datetime.now()
                     
-                    # 【変更】intervalを渡して日足・週足を切り替える
                     df = yf.download(ticker, start=start_date, end=end_date, interval=interval)
                     
                     if isinstance(df.columns, pd.MultiIndex):
@@ -101,14 +100,12 @@ if app_mode == "詳細分析 (単一銘柄)":
                     if len(df) == 0:
                         st.error("データなし")
                     else:
-                        # 指標計算
                         df['RSI'] = calculate_rsi(df['Close'])
                         df['SMA25'] = df['Close'].rolling(window=25).mean()
                         df['SMA75'] = df['Close'].rolling(window=75).mean()
                         latest_rsi = df['RSI'].iloc[-1]
                         current_price = df['Close'].iloc[-1]
 
-                        # ダッシュボード
                         long_name = info.get('longName', search_query)
                         st.markdown(f"## 🏢 {long_name}")
                         
@@ -124,7 +121,6 @@ if app_mode == "詳細分析 (単一銘柄)":
                         c4.metric("配当利回り", div)
                         st.markdown("---")
 
-                        # チャート
                         tab1, tab2 = st.tabs(["📈 実績チャート", "🤖 AI予測"])
                         with tab1:
                             fig = go.Figure()
@@ -135,7 +131,6 @@ if app_mode == "詳細分析 (単一銘柄)":
                             st.plotly_chart(fig, use_container_width=True)
                         
                         with tab2:
-                            # Prophetは日足以外だと少し精度が落ちるが動くように調整
                             data = df.reset_index()
                             date_col = 'Date' if 'Date' in data.columns else 'Datetime'
                             if date_col in data.columns:
@@ -149,7 +144,6 @@ if app_mode == "詳細分析 (単一銘柄)":
                             fig_ai = plot_plotly(m, forecast)
                             st.plotly_chart(fig_ai, use_container_width=True)
 
-                        # ニュース
                         st.markdown(f"### 📰 ニュース")
                         news = get_news(search_query)
                         if news:
@@ -163,18 +157,17 @@ if app_mode == "詳細分析 (単一銘柄)":
                 st.error(f"エラー: {e}")
 
 # ==========================================
-# 🅱️ パフォーマンス比較モード (新機能！)
+# 🅱️ パフォーマンス比較モード (ヒートマップ追加！)
 # ==========================================
 else:
     st.header("⚖️ 銘柄パフォーマンス比較")
-    st.info("複数の銘柄を選んで、どれが一番成長したか競争させます。（スタート地点を0%として比較）")
+    st.info("複数の銘柄を選んで、成長率と相関（似ている度）を分析します。")
 
     if not stocks:
         st.error("リスト読み込みエラー")
     else:
-        # 複数選択ボックス (multiselect)
         stock_labels = [s["label"] for s in stocks]
-        selected_labels = st.multiselect("比較したい銘柄を選んでください（複数可）", options=stock_labels, default=stock_labels[:2])
+        selected_labels = st.multiselect("比較したい銘柄を選んでください（2つ以上推奨）", options=stock_labels, default=stock_labels[:3])
         
         compare_years = st.sidebar.slider("比較期間(年)", 1, 10, 1)
 
@@ -183,47 +176,61 @@ else:
                 st.warning("銘柄を少なくとも1つ選んでください")
             else:
                 try:
-                    with st.spinner('各社のデータを集めて競争させています...'):
+                    with st.spinner('データ収集中...'):
                         start_date = datetime.now() - timedelta(days=compare_years*365)
                         end_date = datetime.now()
                         
                         fig_comp = go.Figure()
+                        combined_df = pd.DataFrame() # ヒートマップ用のデータ箱
                         
                         for label in selected_labels:
-                            # データ辞書からコードを取り出す
                             target = next(s for s in stocks if s["label"] == label)
                             code = target["code"]
+                            name = target["query"]
                             
-                            # データ取得
                             df = yf.download(code, start=start_date, end=end_date, interval=interval)
                             if isinstance(df.columns, pd.MultiIndex):
                                 df.columns = df.columns.get_level_values(0)
                             
                             if len(df) > 0:
-                                # 【重要】リターン（％）に変換して比較する
-                                # (今の価格 / スタート時の価格) - 1
-                                # これをやらないと、1000円の株と3万円の株が比較できない！
+                                # 1. チャート用にリターン計算
                                 initial_price = df['Close'].iloc[0]
                                 df['Return'] = ((df['Close'] / initial_price) - 1) * 100
+                                fig_comp.add_trace(go.Scatter(x=df.index, y=df['Return'], mode='lines', name=f"{name}"))
                                 
-                                fig_comp.add_trace(go.Scatter(
-                                    x=df.index, 
-                                    y=df['Return'], 
-                                    mode='lines', 
-                                    name=f"{target['query']} ({code})"
-                                ))
+                                # 2. ヒートマップ用にデータを保管（列名を銘柄名にする）
+                                combined_df[name] = df['Close']
 
+                        # --- 成長率チャート表示 ---
                         fig_comp.update_layout(
                             title=f"過去{compare_years}年間の成長率比較 (%)",
-                            xaxis_title="日付",
-                            yaxis_title="リターン (%)",
-                            height=600,
-                            hovermode="x unified" # カーソルを合わせた時に全銘柄の数値を表示
+                            xaxis_title="日付", yaxis_title="リターン (%)",
+                            height=500, hovermode="x unified"
                         )
-                        # 0%のラインを引く
                         fig_comp.add_hline(y=0, line_dash="dash", line_color="gray")
-                        
                         st.plotly_chart(fig_comp, use_container_width=True)
-                        
+
+                        # --- 【新機能】相関ヒートマップ表示 ---
+                        if len(combined_df.columns) > 1:
+                            st.markdown("### 🧩 株価の連動性（相関ヒートマップ）")
+                            st.caption("🟥 赤 = 同じ動きをする（分散効果 低） / 🟦 青 = 逆の動きをする（分散効果 高）")
+                            
+                            # 相関係数を計算
+                            corr_matrix = combined_df.corr()
+                            
+                            fig_heat = go.Figure(data=go.Heatmap(
+                                z=corr_matrix.values,
+                                x=corr_matrix.columns,
+                                y=corr_matrix.index,
+                                colorscale='RdBu_r', # 赤と青（_rは反転）
+                                zmin=-1, zmax=1,
+                                text=corr_matrix.values, # 数字も表示
+                                texttemplate="%{text:.2f}"
+                            ))
+                            fig_heat.update_layout(height=600, title="相関マトリクス")
+                            st.plotly_chart(fig_heat, use_container_width=True)
+                        else:
+                            st.info("※ヒートマップを見るには、2つ以上の銘柄を選んでください。")
+
                 except Exception as e:
                     st.error(f"比較エラー: {e}")
