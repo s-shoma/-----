@@ -5,12 +5,12 @@ from datetime import datetime, timedelta
 from prophet import Prophet
 from prophet.plot import plot_plotly
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots # グラフを重ねるための道具
+from plotly.subplots import make_subplots
 import feedparser
 import urllib.parse
 
 st.set_page_config(page_title="はまさんの神投資アプリ 🚀", layout="wide")
-st.title("God Mode: 視覚強化版 (Visual Pro) ⛩️")
+st.title("God Mode: 完全日本語 & 詳細データ版 ⛩️")
 
 # --- サイドバー設定 ---
 st.sidebar.header("🛠 設定")
@@ -21,7 +21,6 @@ interval_map = {"日足 (1日)": "1d", "週足 (1週間)": "1wk", "月足 (1ヶ�
 selected_interval_label = st.sidebar.selectbox("チャートの足", options=interval_map.keys())
 interval = interval_map[selected_interval_label]
 
-# --- Excelリスト読み込み ---
 @st.cache_data
 def get_stock_list():
     try:
@@ -50,7 +49,6 @@ def get_stock_list():
 
 stocks = get_stock_list()
 
-# --- 共通関数 ---
 def calculate_rsi(data, window=14):
     delta = data.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
@@ -116,46 +114,52 @@ if app_mode == "詳細分析 (単一銘柄)":
                         div = info.get('dividendYield', '-')
                         if isinstance(div, (int, float)): div = f"{div*100:.2f}%"
 
+                        # 基本データ表示
                         c1, c2, c3, c4 = st.columns(4)
                         c1.metric("現在株価", f"{float(current_price):.2f}")
                         c2.metric("PER", pe)
                         c3.metric("PBR", pb)
                         c4.metric("配当利回り", div)
                         
+                        # --- 【新機能】本日の詳細データ（4本値） ---
+                        st.markdown("##### 📊 本日の詳細データ")
+                        latest_row = df.iloc[-1]
+                        d1, d2, d3, d4 = st.columns(4)
+                        d1.metric("始値 (Open)", f"{float(latest_row['Open']):.2f}")
+                        d2.metric("高値 (High)", f"{float(latest_row['High']):.2f}")
+                        d3.metric("安値 (Low)", f"{float(latest_row['Low']):.2f}")
+                        d4.metric("終値 (Close)", f"{float(latest_row['Close']):.2f}")
+                        # ----------------------------------------
+                        
                         csv_data = convert_df_to_csv(df)
                         st.download_button(label="📥 株価データをCSVでダウンロード", data=csv_data, file_name=f"{ticker}_data.csv", mime='text/csv')
                         st.markdown("---")
 
-                        # チャートタブ
                         tab1, tab2, tab3 = st.tabs(["📈 実績チャート(Pro)", "💰 決算推移", "🤖 AI予測(Pro)"])
                         
-                        # --- 1. 実績チャート (Visual Upgrade) ---
                         with tab1:
-                            # 2段組みのグラフを作る（上が株価、下が出来高）
                             fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
                                                 vertical_spacing=0.03, row_heights=[0.7, 0.3])
 
-                            # ローソク足
-                            fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='株価'), row=1, col=1)
-                            # 移動平均線
+                            # 【変更】hovertextを日本語にカスタマイズ
+                            fig.add_trace(go.Candlestick(
+                                x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], 
+                                name='株価',
+                                hovertemplate="<b>日付</b>: %{x|%Y/%m/%d}<br><b>始値</b>: %{open}<br><b>高値</b>: %{high}<br><b>安値</b>: %{low}<br><b>終値</b>: %{close}<extra></extra>"
+                            ), row=1, col=1)
+                            
                             fig.add_trace(go.Scatter(x=df.index, y=df['SMA25'], mode='lines', name='25MA', line=dict(color='#FFA500', width=1.5)), row=1, col=1)
                             fig.add_trace(go.Scatter(x=df.index, y=df['SMA75'], mode='lines', name='75MA', line=dict(color='#00BFFF', width=1.5)), row=1, col=1)
-                            
-                            # 出来高（棒グラフ）
                             fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='出来高', marker_color='rgba(200, 200, 200, 0.5)'), row=2, col=1)
 
-                            # デザイン調整（ダークモード風）
                             fig.update_layout(
                                 title=f"{selected_interval_label}チャート (出来高付き)",
-                                height=600,
-                                template="plotly_dark", # ★ここが魔法の言葉！黒背景になります
-                                xaxis_rangeslider_visible=False,
-                                showlegend=True,
+                                height=600, template="plotly_dark",
+                                xaxis_rangeslider_visible=False, showlegend=True,
                                 margin=dict(l=20, r=20, t=50, b=20)
                             )
                             st.plotly_chart(fig, use_container_width=True)
                         
-                        # --- 2. 決算グラフ ---
                         with tab2:
                             if financials is not None and not financials.empty:
                                 fin_df = financials.T.sort_index()
@@ -170,7 +174,6 @@ if app_mode == "詳細分析 (単一銘柄)":
                             else:
                                 st.info("決算データなし")
 
-                        # --- 3. AI予測 (Visual Upgrade) ---
                         with tab3:
                             data = df.reset_index()
                             date_col = 'Date' if 'Date' in data.columns else 'Datetime'
@@ -183,25 +186,15 @@ if app_mode == "詳細分析 (単一銘柄)":
                             future = m.make_future_dataframe(periods=days_predict)
                             forecast = m.predict(future)
                             
-                            # Prophetの図もPlotlyでカスタマイズ
                             fig_ai = plot_plotly(m, forecast)
-                            fig_ai.update_layout(
-                                title="AI予測信頼区間 (黒背景版)",
-                                height=600,
-                                template="plotly_dark", # 黒背景
-                                xaxis_title="日付", yaxis_title="株価"
-                            )
+                            fig_ai.update_layout(title="AI予測信頼区間", height=600, template="plotly_dark", xaxis_title="日付", yaxis_title="株価")
                             st.plotly_chart(fig_ai, use_container_width=True)
 
-                        # --- 4. RSI (Visual Upgrade: 色帯付き) ---
                         st.markdown("### 📊 RSI（過熱感）")
                         fig_rsi = go.Figure()
                         fig_rsi.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='#AB63FA', width=2)))
-                        
-                        # 帯（ゾーン）をつける
                         fig_rsi.add_hrect(y0=70, y1=100, fillcolor="red", opacity=0.2, line_width=0, annotation_text="売りゾーン", annotation_position="top left")
                         fig_rsi.add_hrect(y0=0, y1=30, fillcolor="blue", opacity=0.2, line_width=0, annotation_text="買いゾーン", annotation_position="bottom left")
-                        
                         fig_rsi.update_layout(height=300, yaxis_range=[0, 100], template="plotly_dark", title="RSI推移 (70以上=赤 / 30以下=青)")
                         st.plotly_chart(fig_rsi, use_container_width=True)
 
@@ -253,11 +246,7 @@ else:
                                 fig_comp.add_trace(go.Scatter(x=df.index, y=df['Return'], mode='lines', name=f"{name}"))
                                 combined_df[name] = df['Close']
 
-                        fig_comp.update_layout(
-                            title=f"成長率比較 (%) - Dark Mode",
-                            height=600, hovermode="x unified",
-                            template="plotly_dark" # ここも黒背景
-                        )
+                        fig_comp.update_layout(title=f"成長率比較 (%) - Dark Mode", height=600, hovermode="x unified", template="plotly_dark")
                         fig_comp.add_hline(y=0, line_dash="dash", line_color="gray")
                         st.plotly_chart(fig_comp, use_container_width=True)
 
