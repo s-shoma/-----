@@ -9,7 +9,7 @@ import feedparser
 import urllib.parse
 
 st.set_page_config(page_title="はまさんの神投資アプリ 🚀", layout="wide")
-st.title("God Mode: 全銘柄対応 & 比較分析版 ⛩️")
+st.title("God Mode: 全銘柄対応 & 決算分析版 ⛩️")
 
 # --- サイドバー設定 ---
 st.sidebar.header("🛠 設定")
@@ -85,13 +85,16 @@ if app_mode == "詳細分析 (単一銘柄)":
 
         if st.sidebar.button("神分析を実行 ⚡"):
             try:
-                with st.spinner(f'【{search_query}】を分析中...'):
+                with st.spinner(f'【{search_query}】の財務データ等を分析中...'):
                     stock_info = yf.Ticker(ticker)
                     info = stock_info.info
                     
+                    # 決算データの取得（ここが新機能！）
+                    financials = stock_info.financials
+                    
+                    # 株価データの取得
                     start_date = datetime.now() - timedelta(days=years*365)
                     end_date = datetime.now()
-                    
                     df = yf.download(ticker, start=start_date, end=end_date, interval=interval)
                     
                     if isinstance(df.columns, pd.MultiIndex):
@@ -106,6 +109,7 @@ if app_mode == "詳細分析 (単一銘柄)":
                         latest_rsi = df['RSI'].iloc[-1]
                         current_price = df['Close'].iloc[-1]
 
+                        # ダッシュボード
                         long_name = info.get('longName', search_query)
                         st.markdown(f"## 🏢 {long_name}")
                         
@@ -121,7 +125,10 @@ if app_mode == "詳細分析 (単一銘柄)":
                         c4.metric("配当利回り", div)
                         st.markdown("---")
 
-                        tab1, tab2 = st.tabs(["📈 実績チャート", "🤖 AI予測"])
+                        # チャートタブ（決算タブを追加！）
+                        tab1, tab2, tab3 = st.tabs(["📈 実績チャート", "💰 決算推移", "🤖 AI予測"])
+                        
+                        # 1. 実績チャート
                         with tab1:
                             fig = go.Figure()
                             fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='株価'))
@@ -130,7 +137,8 @@ if app_mode == "詳細分析 (単一銘柄)":
                             fig.update_layout(height=500, title=f"{selected_interval_label}チャート")
                             st.plotly_chart(fig, use_container_width=True)
                         
-                        with tab2:
+                        # 2. 決算推移（新機能）
+                        with tab3: # タブの順番変えました（AIを3番目に）
                             data = df.reset_index()
                             date_col = 'Date' if 'Date' in data.columns else 'Datetime'
                             if date_col in data.columns:
@@ -144,6 +152,55 @@ if app_mode == "詳細分析 (単一銘柄)":
                             fig_ai = plot_plotly(m, forecast)
                             st.plotly_chart(fig_ai, use_container_width=True)
 
+                        # 3. 決算グラフ描画
+                        with tab2:
+                            if financials is not None and not financials.empty:
+                                try:
+                                    # データ整理（日付が列になっているので転置する）
+                                    fin_df = financials.T
+                                    # 日付の古い順に並び替え
+                                    fin_df = fin_df.sort_index()
+                                    
+                                    # 必要な項目（売上と純利益）があるか確認して抽出
+                                    # yfinanceの項目名は英語（Total Revenue, Net Income）
+                                    target_cols = ['Total Revenue', 'Net Income']
+                                    
+                                    # グラフ作成
+                                    fig_fin = go.Figure()
+                                    
+                                    # 売上高（棒グラフ）
+                                    if 'Total Revenue' in fin_df.columns:
+                                        fig_fin.add_trace(go.Bar(
+                                            x=fin_df.index, 
+                                            y=fin_df['Total Revenue'], 
+                                            name='売上高', 
+                                            marker_color='lightblue'
+                                        ))
+                                    
+                                    # 純利益（棒グラフ）
+                                    if 'Net Income' in fin_df.columns:
+                                        fig_fin.add_trace(go.Bar(
+                                            x=fin_df.index, 
+                                            y=fin_df['Net Income'], 
+                                            name='純利益', 
+                                            marker_color='orange'
+                                        ))
+
+                                    fig_fin.update_layout(
+                                        title="過去の業績推移 (売上高 & 純利益)",
+                                        yaxis_title="金額",
+                                        barmode='group', # 並べて表示
+                                        height=500
+                                    )
+                                    st.plotly_chart(fig_fin, use_container_width=True)
+                                    st.caption("※データがない年は表示されません。金額の単位に注意してください（兆・億など）。")
+                                except Exception as e:
+                                    st.warning(f"グラフ作成エラー: {e}")
+                                    st.write(financials) # 生データを表示しておく
+                            else:
+                                st.info("決算データが取得できませんでした（ETFや指数などの可能性があります）。")
+
+                        # ニュース
                         st.markdown(f"### 📰 ニュース")
                         news = get_news(search_query)
                         if news:
@@ -157,7 +214,7 @@ if app_mode == "詳細分析 (単一銘柄)":
                 st.error(f"エラー: {e}")
 
 # ==========================================
-# 🅱️ パフォーマンス比較モード (ヒートマップ追加！)
+# 🅱️ パフォーマンス比較モード
 # ==========================================
 else:
     st.header("⚖️ 銘柄パフォーマンス比較")
@@ -181,7 +238,7 @@ else:
                         end_date = datetime.now()
                         
                         fig_comp = go.Figure()
-                        combined_df = pd.DataFrame() # ヒートマップ用のデータ箱
+                        combined_df = pd.DataFrame()
                         
                         for label in selected_labels:
                             target = next(s for s in stocks if s["label"] == label)
@@ -193,15 +250,11 @@ else:
                                 df.columns = df.columns.get_level_values(0)
                             
                             if len(df) > 0:
-                                # 1. チャート用にリターン計算
                                 initial_price = df['Close'].iloc[0]
                                 df['Return'] = ((df['Close'] / initial_price) - 1) * 100
                                 fig_comp.add_trace(go.Scatter(x=df.index, y=df['Return'], mode='lines', name=f"{name}"))
-                                
-                                # 2. ヒートマップ用にデータを保管（列名を銘柄名にする）
                                 combined_df[name] = df['Close']
 
-                        # --- 成長率チャート表示 ---
                         fig_comp.update_layout(
                             title=f"過去{compare_years}年間の成長率比較 (%)",
                             xaxis_title="日付", yaxis_title="リターン (%)",
@@ -210,22 +263,14 @@ else:
                         fig_comp.add_hline(y=0, line_dash="dash", line_color="gray")
                         st.plotly_chart(fig_comp, use_container_width=True)
 
-                        # --- 【新機能】相関ヒートマップ表示 ---
                         if len(combined_df.columns) > 1:
                             st.markdown("### 🧩 株価の連動性（相関ヒートマップ）")
-                            st.caption("🟥 赤 = 同じ動きをする（分散効果 低） / 🟦 青 = 逆の動きをする（分散効果 高）")
-                            
-                            # 相関係数を計算
+                            st.caption("🟥 赤 = 同じ動き / 🟦 青 = 逆の動き")
                             corr_matrix = combined_df.corr()
-                            
                             fig_heat = go.Figure(data=go.Heatmap(
-                                z=corr_matrix.values,
-                                x=corr_matrix.columns,
-                                y=corr_matrix.index,
-                                colorscale='RdBu_r', # 赤と青（_rは反転）
-                                zmin=-1, zmax=1,
-                                text=corr_matrix.values, # 数字も表示
-                                texttemplate="%{text:.2f}"
+                                z=corr_matrix.values, x=corr_matrix.columns, y=corr_matrix.index,
+                                colorscale='RdBu_r', zmin=-1, zmax=1,
+                                text=corr_matrix.values, texttemplate="%{text:.2f}"
                             ))
                             fig_heat.update_layout(height=600, title="相関マトリクス")
                             st.plotly_chart(fig_heat, use_container_width=True)
