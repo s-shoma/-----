@@ -10,7 +10,7 @@ import feedparser
 import urllib.parse
 
 st.set_page_config(page_title="はまさんの神投資アプリ 🚀", layout="wide")
-st.title("God Mode: テーマ別検索機能版 ⛩️")
+st.title("God Mode: AIシグナル推奨版 ⛩️")
 
 # --- サイドバー設定 ---
 st.sidebar.header("🛠 設定")
@@ -22,42 +22,23 @@ selected_interval_label = st.sidebar.selectbox("チャートの足", options=int
 interval = interval_map[selected_interval_label]
 
 # ==========================================
-# 💎 ここが新機能！テーマ辞書の定義
+# テーマ辞書
 # ==========================================
-# 自分で好きなテーマと銘柄コードを追加できます
 THEME_DICT = {
     "💎 レアアース関連": [
-        "5713.T", # 住友金属鉱山
-        "5711.T", # 三菱マテリアル
-        "4063.T", # 信越化学工業 (磁石)
-        "5706.T", # 三井金属
-        "5727.T", # 東邦チタニウム
-        "6976.T", # 太陽誘電
-        "4005.T", # 住友化学
-        "5019.T", # 出光興産
+        "5713.T", "5711.T", "4063.T", "5706.T", "5727.T", "6976.T", "4005.T", "5019.T", "1605.T"
     ],
     "⚡ 半導体 (最強テーマ)": [
-        "8035.T", # 東京エレクトロン
-        "6857.T", # アドバンテスト
-        "6146.T", # ディスコ
-        "6920.T", # レーザーテック
-        "6723.T", # ルネサス
-        "4063.T", # 信越化学
-        "7735.T", # SCREEN
+        "8035.T", "6857.T", "6146.T", "6920.T", "6723.T", "4063.T", "7735.T"
     ],
     "🤖 人工知能 (AI)": [
-        "9984.T", # ソフトバンクG
-        "6701.T", # NEC
-        "6702.T", # 富士通
-        "9613.T", # NTTデータ
-        "3993.T", # PKSHA
+        "9984.T", "6701.T", "6702.T", "9613.T", "3993.T"
     ],
     "🚗 自動運転・EV": [
-        "7203.T", # トヨタ
-        "7267.T", # ホンダ
-        "6758.T", # ソニーG
-        "6902.T", # デンソー
-        "6594.T", # ニデック
+        "7203.T", "7267.T", "6758.T", "6902.T", "6594.T"
+    ],
+     "🏦 銀行・金融": [
+        "8306.T", "8316.T", "8411.T", "8591.T", "8604.T"
     ]
 }
 
@@ -67,7 +48,6 @@ def get_stock_list():
     try:
         df_jpx = pd.read_excel("./stock_list.xlsx")
         stock_list = []
-        
         custom_stocks = [
             ("AAPL", "Apple Inc", "米国株: Apple", "🇺🇸 米国株"),
             ("NVDA", "NVIDIA Corp", "米国株: NVIDIA", "🇺🇸 米国株"),
@@ -76,7 +56,6 @@ def get_stock_list():
             ("GOOGL", "Alphabet Inc", "米国株: Google", "🇺🇸 米国株"),
             ("AMZN", "Amazon.com", "米国株: Amazon", "🇺🇸 米国株"),
         ]
-        
         for code, query, name, sector in custom_stocks:
             stock_list.append({"label": name, "code": code, "query": query, "sector": sector})
 
@@ -85,11 +64,9 @@ def get_stock_list():
             name = str(row.iloc[2])
             sector = str(row.iloc[5])
             if sector == '-': sector = "その他・ETF"
-
             if code.isdigit() and len(code) == 4:
                 full_code = f"{code}.T"
                 stock_list.append({"label": f"{full_code}: {name}", "code": full_code, "query": name, "sector": sector})
-                
         return stock_list
     except Exception as e:
         return []
@@ -113,33 +90,107 @@ def get_news(query):
 def convert_df_to_csv(df):
     return df.to_csv().encode('utf-8-sig')
 
-# --- フィルターロジック (テーマ優先) ---
+# --- 銘柄フィルタリング ---
 filtered_stocks = []
 stock_labels = []
 
 if stocks:
-    # 1. テーマ選択
     theme_options = ["指定なし (全検索モード)"] + list(THEME_DICT.keys())
     selected_theme = st.sidebar.selectbox("🌟 注目テーマで絞り込み", options=theme_options)
     
     if selected_theme != "指定なし (全検索モード)":
-        # テーマ辞書にあるコードだけを抽出
         target_codes = THEME_DICT[selected_theme]
         filtered_stocks = [s for s in stocks if s["code"] in target_codes]
-        st.sidebar.success(f"{selected_theme}: {len(filtered_stocks)}銘柄が見つかりました")
-    
+        st.sidebar.success(f"{selected_theme}: {len(filtered_stocks)}銘柄")
     else:
-        # 2. 業種選択 (テーマが選ばれていない場合のみ表示)
         unique_sectors = sorted(list(set([s["sector"] for s in stocks])))
         sector_options = ["指定なし (全銘柄)"] + unique_sectors
         selected_sector = st.sidebar.selectbox("🔍 業種で絞り込み", options=sector_options)
-        
         if selected_sector != "指定なし (全銘柄)":
             filtered_stocks = [s for s in stocks if s["sector"] == selected_sector]
         else:
             filtered_stocks = stocks
             
     stock_labels = [s["label"] for s in filtered_stocks]
+
+# ==========================================
+# 🚀 新機能: AIシグナル・スキャナー
+# ==========================================
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🤖 お宝銘柄発掘")
+if st.sidebar.button("🔍 AI推奨銘柄をスキャン"):
+    if len(filtered_stocks) > 50:
+        st.sidebar.warning("銘柄数が多すぎます(50件以上)。テーマか業種で絞ってください。")
+    else:
+        recommended_stocks = []
+        progress_bar = st.sidebar.progress(0)
+        status_text = st.sidebar.empty()
+        
+        # 過去1年分のデータで判定
+        scan_start = datetime.now() - timedelta(days=365)
+        scan_end = datetime.now()
+
+        for i, stock in enumerate(filtered_stocks):
+            status_text.text(f"分析中: {stock['query']}...")
+            progress_bar.progress((i + 1) / len(filtered_stocks))
+            
+            try:
+                # データ取得（軽量化のため期間短縮）
+                df_scan = yf.download(stock["code"], start=scan_start, end=scan_end, interval="1d", progress=False)
+                if isinstance(df_scan.columns, pd.MultiIndex):
+                    df_scan.columns = df_scan.columns.get_level_values(0)
+                
+                if len(df_scan) > 25:
+                    # テクニカル計算
+                    df_scan['RSI'] = calculate_rsi(df_scan['Close'])
+                    df_scan['SMA25'] = df_scan['Close'].rolling(window=25).mean()
+                    df_scan['SMA75'] = df_scan['Close'].rolling(window=75).mean()
+                    
+                    latest = df_scan.iloc[-1]
+                    rsi = latest['RSI']
+                    price = latest['Close']
+                    sma25 = latest['SMA25']
+                    sma75 = latest['SMA75']
+                    
+                    # --- 判定ロジック ---
+                    reasons = []
+                    score = 0
+                    
+                    # 1. RSI判定 (30以下は売られすぎ=買い)
+                    if rsi <= 35:
+                        reasons.append(f"💎 RSIが低い ({rsi:.1f}) - お買い得！")
+                        score += 3
+                    elif rsi >= 70:
+                        reasons.append(f"🔥 RSIが高い ({rsi:.1f}) - 加熱気味")
+                        score -= 2
+                        
+                    # 2. 移動平均線判定 (ゴールデンクロス風)
+                    if sma25 > sma75:
+                        score += 1 # 上昇トレンド中
+                    
+                    # スコアが高いものだけ採用
+                    if score >= 1:
+                        recommended_stocks.append({
+                            "銘柄": stock['query'],
+                            "コード": stock['code'],
+                            "現在値": f"{price:.0f}円",
+                            "判定": "買い推奨 🎯" if score >= 3 else "注目株 👀",
+                            "理由": ", ".join(reasons) if reasons else "上昇トレンド継続中 📈"
+                        })
+                        
+            except Exception:
+                continue
+        
+        progress_bar.empty()
+        status_text.empty()
+        
+        # 結果表示
+        if recommended_stocks:
+            st.success(f"AI分析の結果、{len(recommended_stocks)}件の注目銘柄が見つかりました！")
+            result_df = pd.DataFrame(recommended_stocks)
+            st.table(result_df)
+        else:
+            st.info("現在、明確な「買いシグナル」が出ている銘柄はありませんでした。")
 
 # ==========================================
 # 🅰️ 詳細分析モード
@@ -155,7 +206,7 @@ if app_mode == "詳細分析 (単一銘柄)":
         search_query = selected_data["query"]
         sector_name = selected_data["sector"]
 
-        years = st.sidebar.slider("学習期間(年)", 1, 5, 2)
+        years = st.sidebar.slider("学習期間(年)", 1, 10, 5) 
         days_predict = st.sidebar.slider("予測期間(日)", 30, 365, 90)
 
         if st.sidebar.button("神分析を実行 ⚡"):
@@ -181,7 +232,6 @@ if app_mode == "詳細分析 (単一銘柄)":
                         current_price = df['Close'].iloc[-1]
                         
                         long_name = info.get('longName', search_query)
-                        # テーマバッジの表示ロジック
                         badge_html = f"<span style='background-color:#333; padding:5px; border-radius:5px; font-size:14px;'>{sector_name}</span>"
                         if selected_theme != "指定なし (全検索モード)":
                              badge_html += f" <span style='background-color:#AB63FA; padding:5px; border-radius:5px; font-size:14px;'>{selected_theme}</span>"
@@ -212,7 +262,8 @@ if app_mode == "詳細分析 (単一銘柄)":
                         st.markdown("---")
 
                         tab1, tab2, tab3 = st.tabs(["📈 実績チャート(Pro)", "💰 決算推移", "🤖 AI予測(Pro)"])
-                        
+                        no_weekends = dict(bounds=["sat", "mon"]) 
+
                         with tab1:
                             fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
                             fig.add_trace(go.Candlestick(
@@ -222,7 +273,11 @@ if app_mode == "詳細分析 (単一銘柄)":
                             fig.add_trace(go.Scatter(x=df.index, y=df['SMA25'], mode='lines', name='25MA', line=dict(color='#FFA500', width=1.5)), row=1, col=1)
                             fig.add_trace(go.Scatter(x=df.index, y=df['SMA75'], mode='lines', name='75MA', line=dict(color='#00BFFF', width=1.5)), row=1, col=1)
                             fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name='出来高', marker_color='rgba(200, 200, 200, 0.5)'), row=2, col=1)
-                            fig.update_layout(title=f"{selected_interval_label}チャート (出来高付き)", height=600, template="plotly_dark", xaxis_rangeslider_visible=False, showlegend=True)
+                            fig.update_layout(
+                                title=f"{selected_interval_label}チャート (出来高付き)", height=600, template="plotly_dark", 
+                                xaxis_rangeslider_visible=False, showlegend=True,
+                                xaxis=dict(rangebreaks=[no_weekends])
+                            )
                             st.plotly_chart(fig, use_container_width=True)
                         
                         with tab2:
@@ -250,7 +305,10 @@ if app_mode == "詳細分析 (単一銘柄)":
                             future = m.make_future_dataframe(periods=days_predict)
                             forecast = m.predict(future)
                             fig_ai = plot_plotly(m, forecast)
-                            fig_ai.update_layout(title="AI予測信頼区間", height=600, template="plotly_dark")
+                            fig_ai.update_layout(
+                                title="AI予測信頼区間 (5年学習)", height=600, template="plotly_dark",
+                                xaxis=dict(rangebreaks=[no_weekends])
+                            )
                             st.plotly_chart(fig_ai, use_container_width=True)
 
                         st.markdown("### 📊 RSI（過熱感）")
@@ -258,7 +316,10 @@ if app_mode == "詳細分析 (単一銘柄)":
                         fig_rsi.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='#AB63FA', width=2)))
                         fig_rsi.add_hrect(y0=70, y1=100, fillcolor="red", opacity=0.2, line_width=0, annotation_text="売りゾーン", annotation_position="top left")
                         fig_rsi.add_hrect(y0=0, y1=30, fillcolor="blue", opacity=0.2, line_width=0, annotation_text="買いゾーン", annotation_position="bottom left")
-                        fig_rsi.update_layout(height=300, yaxis_range=[0, 100], template="plotly_dark", title="RSI推移")
+                        fig_rsi.update_layout(
+                            height=300, yaxis_range=[0, 100], template="plotly_dark", title="RSI推移",
+                            xaxis=dict(rangebreaks=[no_weekends])
+                        )
                         st.plotly_chart(fig_rsi, use_container_width=True)
 
                         st.markdown(f"### 📰 ニュース")
@@ -281,7 +342,6 @@ else:
     if not filtered_stocks:
         st.error("銘柄リスト読み込みエラー")
     else:
-        # フィルター済みのリストを使用
         selected_labels = st.multiselect("比較したい銘柄を選んでください", options=stock_labels, default=stock_labels[:3] if len(stock_labels)>3 else stock_labels)
         compare_years = st.sidebar.slider("比較期間(年)", 1, 10, 1)
 
@@ -293,7 +353,7 @@ else:
                     with st.spinner('データ収集中...'):
                         start_date = datetime.now() - timedelta(days=compare_years*365)
                         end_date = datetime.now()
-                        fig_comp = go.Figure()
+                        results = [] 
                         combined_df = pd.DataFrame()
                         
                         for label in selected_labels:
@@ -304,14 +364,40 @@ else:
                             if isinstance(df.columns, pd.MultiIndex):
                                 df.columns = df.columns.get_level_values(0)
                             if len(df) > 0:
-                                initial_price = df['Close'].iloc[0]
-                                df['Return'] = ((df['Close'] / initial_price) - 1) * 100
-                                fig_comp.add_trace(go.Scatter(x=df.index, y=df['Return'], mode='lines', name=f"{name}"))
+                                results.append({"name": name, "df": df})
                                 combined_df[name] = df['Close']
 
-                        fig_comp.update_layout(title=f"成長率比較 (%) - Dark Mode", height=600, hovermode="x unified", template="plotly_dark")
-                        fig_comp.add_hline(y=0, line_dash="dash", line_color="gray")
-                        st.plotly_chart(fig_comp, use_container_width=True)
+                        tab_growth, tab_price = st.tabs(["📈 成長率 (%)", "💴 株価 (円)"])
+                        no_weekends = dict(bounds=["sat", "mon"])
+
+                        with tab_growth:
+                            fig_comp = go.Figure()
+                            for item in results:
+                                df = item["df"]
+                                name = item["name"]
+                                initial_price = df['Close'].iloc[0]
+                                df['Return'] = ((df['Close'] / initial_price) - 1) * 100
+                                fig_comp.add_trace(go.Scatter(x=df.index, y=df['Return'], mode='lines', name=name))
+                            
+                            fig_comp.update_layout(
+                                title=f"成長率比較 (%)", height=600, hovermode="x unified", template="plotly_dark",
+                                xaxis=dict(rangebreaks=[no_weekends])
+                            )
+                            fig_comp.add_hline(y=0, line_dash="dash", line_color="gray")
+                            st.plotly_chart(fig_comp, use_container_width=True)
+
+                        with tab_price:
+                            fig_price = go.Figure()
+                            for item in results:
+                                df = item["df"]
+                                name = item["name"]
+                                fig_price.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name=name))
+                            
+                            fig_price.update_layout(
+                                title=f"株価推移 (円)", height=600, hovermode="x unified", template="plotly_dark",
+                                xaxis=dict(rangebreaks=[no_weekends])
+                            )
+                            st.plotly_chart(fig_price, use_container_width=True)
 
                         if len(combined_df.columns) > 1:
                             csv_comp = convert_df_to_csv(combined_df)
