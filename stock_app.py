@@ -9,8 +9,8 @@ from plotly.subplots import make_subplots
 import feedparser
 import urllib.parse
 
-st.set_page_config(page_title="はまさんの神投資アプリ 🚀", layout="wide")
-st.title("God Mode: AIシグナル推奨版 ⛩️")
+st.set_page_config(page_title="はまさんの投資アプリ 🚀", layout="wide")
+st.title("AIシグナル推奨版 ⛩️")
 
 # --- サイドバー設定 ---
 st.sidebar.header("🛠 設定")
@@ -26,7 +26,7 @@ interval = interval_map[selected_interval_label]
 # ==========================================
 THEME_DICT = {
     "💎 レアアース関連": [
-        "5713.T", "5711.T", "4063.T", "5706.T", "5727.T", "6976.T", "4005.T", "5019.T", "1605.T"
+        "5713.T", "5711.T", "4063.T", "5706.T", "5727.T", "6976.T", "4005.T", "5019.T", "1605.T", "1890.T", "1885.T", "6269.T", "7013.T"
     ],
     "⚡ 半導体 (最強テーマ)": [
         "8035.T", "6857.T", "6146.T", "6920.T", "6723.T", "4063.T", "7735.T"
